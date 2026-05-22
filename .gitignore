@@ -1,0 +1,25 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+dist/
+build/
+
+# Environment variables
+.env
+backend/.env
+
+# Git
+.git
+.gitignore
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Docker (optional but good)
+docker-compose.override.yml
