@@ -1,0 +1,73 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  darkMode: "class",
+  theme: {
+    extend: {
+      "colors": {
+              "inverse-on-surface": "#f0f1f3",
+              "on-secondary-fixed": "#151c25",
+              "surface-container-lowest": "#ffffff",
+              "error": "#ba1a1a",
+              "secondary-fixed": "#dce3f0",
+              "primary": "#000000",
+              "secondary-fixed-dim": "#c0c7d3",
+              "surface-dim": "#d9dadc",
+              "on-secondary": "#ffffff",
+              "tertiary-fixed-dim": "#e9c176",
+              "background": "#f8f9fb",
+              "surface-container": "#edeef0",
+              "secondary": "#585f6a",
+              "tertiary": "#000000",
+              "tertiary-container": "#261900",
+              "surface-container-low": "#f3f4f6",
+              "primary-fixed": "#d6e3ff",
+              "on-primary-container": "#76849f",
+              "on-background": "#191c1e",
+              "on-secondary-fixed-variant": "#404752",
+              "outline": "#75777e",
+              "surface-container-high": "#e7e8ea",
+              "surface-tint": "#515f78",
+              "surface-bright": "#f8f9fb",
+              "on-tertiary-fixed-variant": "#5d4201",
+              "surface-variant": "#e1e2e4",
+              "tertiary-fixed": "#ffdea5",
+              "on-surface-variant": "#44474d",
+              "on-error": "#ffffff",
+              "outline-variant": "#c5c6cd",
+              "inverse-surface": "#2e3132",
+              "on-tertiary-container": "#a17f3b",
+              "on-tertiary": "#ffffff",
+              "inverse-primary": "#b9c7e4",
+              "on-tertiary-fixed": "#261900",
+              "on-primary-fixed-variant": "#39475f",
+              "on-secondary-container": "#5e6570",
+              "secondary-container": "#dce3f0",
+              "primary-fixed-dim": "#b9c7e4",
+              "on-primary-fixed": "#0d1c32",
+              "surface": "#f8f9fb",
+              "error-container": "#ffdad6",
+              "primary-container": "#0d1c32",
+              "on-error-container": "#93000a",
+              "on-primary": "#ffffff",
+              "on-surface": "#191c1e",
+              "surface-container-highest": "#e1e2e4"
+      },
+      "borderRadius": {
+              "DEFAULT": "0.125rem",
+              "lg": "0.25rem",
+              "xl": "0.5rem",
+              "full": "0.75rem"
+      },
+      "fontFamily": {
+              "headline": ["Newsreader"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+      }
+    },
+  },
+  plugins: [],
+}

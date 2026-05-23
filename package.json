@@ -1,0 +1,24 @@
+{
+  "name": "legal-hybrid-rag",
+  "version": "1.0.0",
+  "description": "- FastAPI\r - React (Vite)\r - MongoDB\r - Redis\r - Docker",
+  "main": "index.js",
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "preview": "npm run preview --prefix frontend"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hamdani514/legal-hybrid-rag.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/hamdani514/legal-hybrid-rag/issues"
+  },
+  "homepage": "https://github.com/hamdani514/legal-hybrid-rag#readme"
+}
