@@ -34,15 +34,27 @@ async def build_and_save_tree(pdf_id: str, parsed_data: dict) -> str:
     tree_children_meta = []
     child_node_ids = []
 
-    sections = parsed_data.get("sections", [])
-    for sec in sections:
-        section_type = sec.get("section_type")
-        text = sec.get("text", "") or ""
-        heading_found = sec.get("heading_found")
+    # Map existing sections by section_type
+    sections_by_type = {}
+    for sec in parsed_data.get("sections", []):
+        st = sec.get("section_type")
+        if st:
+            sections_by_type[st] = sec
 
-        # Skip sections that are completely empty
-        if not text.strip():
-            continue
+    # Ensure all standard sections are in the tree
+    ordered_section_types = list(DEFAULT_LABELS.keys())
+    for st in sections_by_type:
+        if st not in ordered_section_types:
+            ordered_section_types.append(st)
+
+    for section_type in ordered_section_types:
+        sec = sections_by_type.get(section_type)
+        if sec:
+            text = sec.get("text", "") or ""
+            heading_found = sec.get("heading_found")
+        else:
+            text = ""
+            heading_found = None
 
         child_node_id = str(uuid.uuid4())
         child_node_ids.append(child_node_id)
