@@ -48,7 +48,7 @@ async def run_extraction(pdf_id: str, pdf_path: str, detected_type: str) -> None
         )
         logger.info(f"[{pdf_id}] Parsing started")
         try:
-            await asyncio.wait_for(
+            final = await asyncio.wait_for(
                 parse_sections(pdf_id=pdf_id, extracted_text=text),
                 timeout=600,
             )
@@ -62,6 +62,10 @@ async def run_extraction(pdf_id: str, pdf_path: str, detected_type: str) -> None
                 {"$set": {"status": "parsed"}},
             )
             logger.info(f"[{pdf_id}] Parsing completed")
+
+            # Build and save hierarchical tree in MongoDB
+            from app.ingestion.tree_builder import build_and_save_tree
+            await build_and_save_tree(pdf_id, final)
         except asyncio.TimeoutError:
             failed_at = datetime.now(timezone.utc)
             error_message = "Parsing timed out after 240 seconds."
@@ -101,7 +105,7 @@ async def run_extraction(pdf_id: str, pdf_path: str, detected_type: str) -> None
 @router.post("/upload")
 async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     original_filename = file.filename or "uploaded.pdf"
-    if (file.content_type or "").lower() != "application/pdf" and not original_filename.lower().endswith(".pdf"):
+    if not original_filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
 
     pdf_id = str(uuid4())
@@ -112,6 +116,9 @@ async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(
     file_bytes = await file.read()
     if not file_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    if not file_bytes.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
 
     file_hash = hashlib.sha256(file_bytes).hexdigest()
 
@@ -129,6 +136,13 @@ async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(
         )
 
     saved_path.write_bytes(file_bytes)
+
+    from app.ingestion.validator import validate_judgment
+    is_valid, validation_msg = validate_judgment(str(saved_path))
+    if not is_valid:
+        if saved_path.exists():
+            saved_path.unlink()
+        raise HTTPException(status_code=400, detail=validation_msg)
 
     detected_type = detect_pdf_type(str(saved_path))
     now = datetime.now(timezone.utc)
@@ -232,6 +246,18 @@ async def get_parsed(pdf_id: str):
     }
 
 
+@router.get("/tree/{pdf_id}")
+async def get_tree(pdf_id: str):
+    if db.database is None:
+        raise HTTPException(status_code=503, detail="Database is not connected.")
+
+    tree = await db.database.document_trees.find_one({"pdf_id": pdf_id}, {"_id": 0})
+    if not tree:
+        raise HTTPException(status_code=404, detail="Tree structure not found for this PDF.")
+
+    return tree
+
+
 @router.delete("/jobs/{job_id}")
 async def delete_job(job_id: str):
     if db.jobs is None or db.documents is None:
@@ -245,6 +271,13 @@ async def delete_job(job_id: str):
     if pdf_id:
         await db.documents.delete_many({"pdf_id": pdf_id})
         await db.jobs.delete_many({"pdf_id": pdf_id})
+        
+        # Cleanup tree and nodes from MongoDB
+        if db.nodes is not None:
+            await db.nodes.delete_many({"pdf_id": pdf_id})
+        if db.database is not None:
+            await db.database.document_trees.delete_many({"pdf_id": pdf_id})
+
         for suffix in [".pdf", ".txt", "_sections.json", "_summary.md"]:
             file_path = UPLOADS_DIR / f"{pdf_id}{suffix}"
             if file_path.exists():
