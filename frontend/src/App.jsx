@@ -10,6 +10,9 @@ import AdminLoginPage from './pages/AdminLoginPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import AdminCasesPage from './pages/AdminCasesPage';
 import AdminSupportPage from './pages/AdminSupportPage';
+import AdminSettingsPage from './pages/AdminSettingsPage';
+import AdminManagementPage from './pages/AdminManagementPage';
+import WelcomePage from './pages/WelcomePage';
 import './App.css';
 
 function App() {
@@ -23,10 +26,13 @@ function App() {
           <Route path="/faq" element={<FAQPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/admin-login" element={<AdminLoginPage />} />
           <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
           <Route path="/admin/cases" element={<AdminCasesPage />} />
           <Route path="/admin/support" element={<AdminSupportPage />} />
+          <Route path="/admin/settings" element={<AdminSettingsPage />} />
+          <Route path="/admin/management" element={<AdminManagementPage />} />
         </Routes>
       </div>
     </Router>

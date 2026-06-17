@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_router
+from app.api.embedding_routes import router as embedding_router
 from app.database import connect_db, close_db, db
 
 # ----------------------------
@@ -27,6 +28,10 @@ async def lifespan(app: FastAPI):
         logger.info("🔌 Connecting to database...")
         await connect_db()
         logger.info("✅ Database connection initialized successfully")
+
+        # Initialize MongoDB indexes for embeddings
+        from app.database.mongodb import init_mongodb_indexes
+        await init_mongodb_indexes()
 
         # Optional real ping check
         if db.client:
@@ -97,6 +102,7 @@ async def health():
 # SPA fallback route
 # ----------------------------
 app.include_router(admin_router, prefix="")
+app.include_router(embedding_router, prefix="")
 
 
 @app.get("/{full_path:path}")

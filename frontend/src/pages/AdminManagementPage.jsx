@@ -1,75 +1,98 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-const USERS_PER_PAGE = 10;
+const ADMINS_PER_PAGE = 5;
 
-const AdminDashboardPage = () => {
-  const [users, setUsers] = useState([]);
+const AdminManagementPage = () => {
   const [currentAdmin, setCurrentAdmin] = useState(null);
-  const navigate = useNavigate();
+  const [admins, setAdmins] = useState([]);
+  const [stats, setStats] = useState({ total: 0, super_admins: 0, standard_admins: 0 });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  
+  // Search, Sort, Pagination
+  const [filterQuery, setFilterQuery] = useState('');
+  const [sortBy, setSortBy] = useState('id_asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [visiblePasswords, setVisiblePasswords] = useState({});
+
+  // Modals
+  const [modalOpen, setModalOpen] = useState(false);
+  const [deleteAdminId, setDeleteAdminId] = useState(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // Form
+  const [formData, setFormData] = useState({
+    adminid: '',
+    name: '',
+    email: '',
+    role: 'admin',
+    dob: '',
+    password: '',
+    confirmPassword: ''
+  });
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     const storedAdmin = localStorage.getItem('currentAdmin');
     if (!storedAdmin) {
       navigate('/admin-login');
-    } else {
-      try {
-        setCurrentAdmin(JSON.parse(storedAdmin));
-      } catch (err) {
-        console.error('Error parsing admin data:', err);
-        navigate('/admin-login');
-      }
+      return;
     }
+
+    try {
+      const parsedAdmin = JSON.parse(storedAdmin);
+      if (parsedAdmin.role !== 'super_admin') {
+        navigate('/admin/dashboard');
+        return;
+      }
+      setCurrentAdmin(parsedAdmin);
+    } catch (err) {
+      console.error('Error parsing admin data:', err);
+      navigate('/admin-login');
+      return;
+    }
+
+    fetchAdmins();
   }, [navigate]);
-  const [stats, setStats] = useState({ total_users: 0, pro_users: 0, standard_users: 0 });
-  const [loading, setLoading] = useState(true);
-  const [filterQuery, setFilterQuery] = useState('');
-  const [sortBy, setSortBy] = useState('id_asc');
-  const [currentPage, setCurrentPage] = useState(1);
 
-  // Modal State
-  const [modalOpen, setModalOpen] = useState(false);
-  const [deleteUserId, setDeleteUserId] = useState(null);
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
-  const [formData, setFormData] = useState({
-    id: '',
-    username: '',
-    name: '',
-    email: '',
-    org: '',
-    plan: 'Standard',
-    password: '',
-    dob: '',
-    gender: 'Male',
-    phone_no: ''
-  });
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const fetchUsers = async () => {
+  const fetchAdmins = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/admin/users');
+      setErrorMsg('');
+      const res = await fetch('/api/admin/admins');
       if (res.ok) {
         const data = await res.json();
-        setUsers(data.users || []);
+        setAdmins(data.admins || []);
         setStats({
-          total_users: data.total_users || 0,
-          pro_users: data.pro_users || 0,
-          standard_users: data.standard_users || 0
+          total: data.total || 0,
+          super_admins: data.super_admins || 0,
+          standard_admins: data.standard_admins || 0
         });
+      } else {
+        const data = await res.json();
+        setErrorMsg(data?.detail || 'Failed to load system administrators.');
       }
-    } catch (error) {
-      console.error('Error fetching users:', error);
+    } catch (err) {
+      console.error('Error fetching admins:', err);
+      setErrorMsg('Failed to connect to the backend server.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const getInitials = (name) => {
+    if (!name) return 'A';
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
   };
 
   const handleAddClick = () => {
@@ -77,60 +100,59 @@ const AdminDashboardPage = () => {
     setErrorMsg('');
     setSuccessMsg('');
     setFormData({
-      id: '',
-      username: '',
+      adminid: '',
       name: '',
       email: '',
-      org: '',
-      plan: 'Standard',
-      password: '',
+      role: 'admin',
       dob: '',
-      gender: 'Male',
-      phone_no: ''
+      password: '',
+      confirmPassword: ''
     });
     setModalOpen(true);
   };
 
-  const handleEditClick = (user) => {
+  const handleEditClick = (admin) => {
     setIsEditMode(true);
     setErrorMsg('');
     setSuccessMsg('');
     setFormData({
-      id: user.id || '',
-      username: user.username || '',
-      name: user.name || '',
-      email: user.email || '',
-      org: user.org || '',
-      plan: user.plan || 'Standard',
-      password: user.password || '',
-      dob: user.dob || '',
-      gender: user.gender || 'Male',
-      phone_no: user.phone_no || ''
+      adminid: admin.adminid || '',
+      name: admin.name || '',
+      email: admin.email || '',
+      role: admin.role || 'admin',
+      dob: admin.dob || '',
+      password: admin.password || '',
+      confirmPassword: admin.password || ''
     });
     setModalOpen(true);
   };
 
-  const handleDeleteClick = async (user) => {
-    setDeleteUserId(user.id);
+  const handleDeleteClick = (admin) => {
+    if (admin.adminid === currentAdmin?.adminid) {
+      // Rejection alert / disabled state handles this, but safety check:
+      alert("You cannot delete your own logged-in administrator account.");
+      return;
+    }
+    setDeleteAdminId(admin.adminid);
   };
 
-  const confirmDeleteUser = async () => {
-    if (!deleteUserId) return;
+  const confirmDeleteAdmin = async () => {
+    if (!deleteAdminId) return;
     try {
-      const res = await fetch(`/api/admin/users/${deleteUserId}`, {
+      const res = await fetch(`/api/admin/admins/${encodeURIComponent(deleteAdminId)}`, {
         method: 'DELETE'
       });
       if (res.ok) {
-        fetchUsers();
+        fetchAdmins();
       } else {
         const err = await res.json();
-        alert(`Error deleting user: ${err.detail || 'Unknown error'}`);
+        alert(`Error deleting admin: ${err.detail || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('Error deleting user:', error);
+      console.error('Error deleting admin:', error);
       alert('Failed to connect to the backend server.');
     } finally {
-      setDeleteUserId(null);
+      setDeleteAdminId(null);
     }
   };
 
@@ -141,59 +163,77 @@ const AdminDashboardPage = () => {
 
     // --- Frontend Validations ---
 
-    // 1. Email check: must contain @gmail.com
-    if (!formData.email.toLowerCase().endsWith('@gmail.com')) {
-      setErrorMsg('Email must contain @gmail.com domain.');
+    // 1. Check required fields
+    if (!formData.adminid.trim() || !formData.name.trim() || !formData.email.trim() || !formData.dob || !formData.password) {
+      setErrorMsg('All fields are required.');
       return;
     }
 
-    // 2. Password check: at least 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special character
+    // 2. Email domain check (contains @)
+    if (!formData.email.includes('@')) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+
+    // 3. Password Check: length >= 8, uppercase, lowercase, number, special character
     const pwRegex = /^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#$%^&*()_+\[\]{}|;:',.<>?/`~"\\-]).{8,}$/;
     if (!pwRegex.test(formData.password)) {
       setErrorMsg('Password must be at least 8 characters long, contain a capital letter, a small letter, a number, and a special character.');
       return;
     }
 
-    // 3. DOB check: must be greater than 16 years old based on registration date
+    // 4. Confirm Password Match (only check on add admin)
+    if (!isEditMode && formData.password !== formData.confirmPassword) {
+      setErrorMsg('Password and Confirm Password do not match.');
+      return;
+    }
+
+    // 5. DOB check (validate format and make sure it is a valid date)
     const dobDate = new Date(formData.dob);
     if (isNaN(dobDate.getTime())) {
       setErrorMsg('Please select a valid Date of Birth.');
       return;
     }
 
-    // Registration date logic: edit uses created_at, add uses now
-    const originalUser = isEditMode ? users.find(u => u.id === formData.id) : null;
-    const regDateStr = originalUser?.created_at || new Date().toISOString();
-    const regDate = new Date(regDateStr);
-
-    let age = regDate.getFullYear() - dobDate.getFullYear();
-    const monthDiff = regDate.getMonth() - dobDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && regDate.getDate() < dobDate.getDate())) {
-      age--;
-    }
-
-    if (age < 16) {
-      setErrorMsg('User must be older than 16 years from the registration date.');
-      return;
-    }
-
     try {
-      const url = isEditMode ? `/api/admin/users/${formData.id}` : '/api/admin/users';
+      setSaving(true);
+      const url = isEditMode ? `/api/admin/admins/${encodeURIComponent(formData.adminid)}` : '/api/admin/admins';
       const method = isEditMode ? 'PUT' : 'POST';
+
+      const payload = {
+        adminid: formData.adminid,
+        name: formData.name,
+        email: formData.email,
+        role: formData.role,
+        dob: formData.dob,
+        password: formData.password
+      };
 
       const res = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       });
 
       if (res.ok) {
-        setSuccessMsg(isEditMode ? 'User profile updated successfully!' : 'User created successfully!');
+        setSuccessMsg(isEditMode ? 'Admin profile updated successfully!' : 'Admin created successfully!');
+        
+        // If the logged-in admin updated their own details, update localStorage session
+        if (isEditMode && formData.adminid === currentAdmin?.adminid) {
+          const updatedSession = {
+            adminid: formData.adminid,
+            name: formData.name,
+            role: formData.role
+          };
+          localStorage.setItem('currentAdmin', JSON.stringify(updatedSession));
+          setCurrentAdmin(updatedSession);
+        }
+
         setTimeout(() => {
           setModalOpen(false);
-          fetchUsers();
+          fetchAdmins();
         }, 1000);
       } else {
         const err = await res.json();
@@ -202,61 +242,34 @@ const AdminDashboardPage = () => {
     } catch (error) {
       console.error('Error submitting form:', error);
       setErrorMsg('Failed to communicate with the backend server.');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handlePlanChange = async (userId, newPlan) => {
-    try {
-      const res = await fetch(`/api/admin/users/${userId}/plan`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ plan: newPlan })
-      });
-      if (res.ok) {
-        // Optimistic update
-        setUsers(users.map(u => u.id === userId ? { ...u, plan: newPlan } : u));
-        fetchUsers();
-      } else {
-        const err = await res.json();
-        alert(`Error updating plan: ${err.detail || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Error updating plan:', error);
-      alert('Failed to connect to the backend server.');
-    }
+  const handleLogout = () => {
+    localStorage.removeItem('currentAdmin');
+    navigate('/admin-login');
   };
 
-  const getInitials = (name) => {
-    if (!name) return 'U';
-    return name
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
-  // Sort and filter users client-side
-  const sortedAndFilteredUsers = React.useMemo(() => {
+  // Sort and filter admins client-side
+  const sortedAndFilteredAdmins = React.useMemo(() => {
     const query = filterQuery.toLowerCase().trim();
-    const filtered = users.filter((u) => {
+    const filtered = admins.filter((a) => {
       return (
-        (u.name || '').toLowerCase().includes(query) ||
-        (u.email || '').toLowerCase().includes(query) ||
-        (u.username || '').toLowerCase().includes(query) ||
-        (u.org || '').toLowerCase().includes(query) ||
-        (u.phone_no || '').toLowerCase().includes(query) ||
-        (u.id || '').toLowerCase().includes(query)
+        (a.name || '').toLowerCase().includes(query) ||
+        (a.email || '').toLowerCase().includes(query) ||
+        (a.adminid || '').toLowerCase().includes(query) ||
+        (a.role || '').toLowerCase().includes(query) ||
+        (a.dob || '').toLowerCase().includes(query)
       );
     });
 
     return [...filtered].sort((a, b) => {
       if (sortBy === 'id_asc') {
-        return (a.id || '').localeCompare(b.id || '', undefined, { numeric: true, sensitivity: 'base' });
+        return (a.adminid || '').localeCompare(b.adminid || '', undefined, { numeric: true, sensitivity: 'base' });
       } else if (sortBy === 'id_desc') {
-        return (b.id || '').localeCompare(a.id || '', undefined, { numeric: true, sensitivity: 'base' });
+        return (b.adminid || '').localeCompare(a.adminid || '', undefined, { numeric: true, sensitivity: 'base' });
       } else if (sortBy === 'name_asc') {
         return (a.name || '').localeCompare(b.name || '');
       } else if (sortBy === 'name_desc') {
@@ -264,12 +277,12 @@ const AdminDashboardPage = () => {
       }
       return 0;
     });
-  }, [users, filterQuery, sortBy]);
+  }, [admins, filterQuery, sortBy]);
 
-  const totalPages = Math.ceil(sortedAndFilteredUsers.length / USERS_PER_PAGE);
+  const totalPages = Math.ceil(sortedAndFilteredAdmins.length / ADMINS_PER_PAGE);
   const safeCurrentPage = Math.min(currentPage, Math.max(totalPages, 1));
-  const startIndex = (safeCurrentPage - 1) * USERS_PER_PAGE;
-  const paginatedUsers = sortedAndFilteredUsers.slice(startIndex, startIndex + USERS_PER_PAGE);
+  const startIndex = (safeCurrentPage - 1) * ADMINS_PER_PAGE;
+  const paginatedAdmins = sortedAndFilteredAdmins.slice(startIndex, startIndex + ADMINS_PER_PAGE);
 
   return (
     <div className="flex min-h-screen bg-[#F8F9FB]">
@@ -294,28 +307,26 @@ const AdminDashboardPage = () => {
         {/* Navigation */}
         <nav className="flex-1 mt-4">
           <ul className="flex flex-col gap-1">
-            {/* User Management (Active) */}
+            {/* User Management */}
             <li>
               <Link
                 to="/admin/dashboard"
-                className="flex items-center gap-4 w-full px-8 py-4 transition-all duration-200 bg-[#0D1C32] text-[#E9C176] font-bold translate-x-1"
+                className="flex items-center gap-4 w-full px-8 py-4 transition-all duration-200 text-[#64748B] hover:bg-[#0D1C32] hover:text-white"
               >
-                <span className="material-symbols-outlined" style={{ fontSize: '22px', color: '#E9C176' }}>group</span>
+                <span className="material-symbols-outlined" style={{ fontSize: '22px', color: '#64748B' }}>group</span>
                 <span className="font-body text-sm tracking-[0.35px]">User Management</span>
               </Link>
             </li>
-            {/* Admin Management */}
-            {currentAdmin?.role === 'super_admin' && (
-              <li>
-                <Link
-                  to="/admin/management"
-                  className="flex items-center gap-4 w-full px-8 py-4 transition-all duration-200 text-[#64748B] hover:bg-[#0D1C32] hover:text-white"
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: '20px', color: '#64748B' }}>manage_accounts</span>
-                  <span className="font-body text-sm tracking-[0.35px]">Admin Management</span>
-                </Link>
-              </li>
-            )}
+            {/* Admin Management (Active) */}
+            <li>
+              <Link
+                to="/admin/management"
+                className="flex items-center gap-4 w-full px-8 py-4 transition-all duration-200 bg-[#0D1C32] text-[#E9C176] font-bold translate-x-1"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '20px', color: '#E9C176' }}>manage_accounts</span>
+                <span className="font-body text-sm tracking-[0.35px]">Admin Management</span>
+              </Link>
+            </li>
             {/* Cases */}
             <li>
               <Link
@@ -361,10 +372,7 @@ const AdminDashboardPage = () => {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  localStorage.removeItem('currentAdmin');
-                  navigate('/admin-login');
-                }}
+                onClick={handleLogout}
                 className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm font-body text-[#BA1A1A] hover:bg-[#BA1A1A]/10 transition-all text-left"
               >
                 <span className="material-symbols-outlined text-[18px]">logout</span>
@@ -403,28 +411,25 @@ const AdminDashboardPage = () => {
         <header className="flex justify-between items-center w-full px-12 py-8 bg-[#F8F9FB] sticky top-0 z-40 h-[128px]">
           <div className="flex flex-col gap-1">
             <h1 className="font-headline font-semibold text-4xl leading-10 tracking-[-0.9px] text-[#0D1C32]">
-              Management Suite
+              Admin Management
             </h1>
             <p className="font-body text-sm leading-5 text-[#44474D]">
-              Orchestrating professional identities and permissions.
+              Orchestrate system administrators, roles and permissions.
             </p>
           </div>
 
           <div className="flex items-center gap-6">
-            {/* Add User Button - Styled exactly like Logout, positioned left of it */}
+            {/* Add Admin Button */}
             <button
               onClick={handleAddClick}
               className="bg-[#0D1C32] text-white font-body font-medium text-xs leading-4 tracking-[1.2px] uppercase px-8 py-2.5 rounded-lg hover:opacity-90 transition-opacity"
             >
-              Add User
+              Add Admin
             </button>
 
             {/* Logout Button */}
             <button
-              onClick={() => {
-                localStorage.removeItem('currentAdmin');
-                navigate('/admin-login');
-              }}
+              onClick={handleLogout}
               className="bg-[#0D1C32] text-white font-body font-medium text-xs leading-4 tracking-[1.2px] uppercase px-8 py-2.5 rounded-lg hover:opacity-90 transition-opacity"
             >
               Logout
@@ -440,56 +445,56 @@ const AdminDashboardPage = () => {
 
         {/* Stats Section (Bento Grid) */}
         <section className="px-12 py-6 grid grid-cols-3 gap-8">
-          {/* Total Users Card */}
+          {/* Total Admins Card */}
           <div className="bg-white p-8 rounded-lg relative overflow-hidden">
             <div className="flex justify-between items-start mb-4">
-              <span className="font-body text-xs leading-4 tracking-[1.2px] uppercase text-[#75777E]">Total User</span>
-              <span className="material-symbols-outlined text-[#E9C176]" style={{ fontSize: '22px' }}>group</span>
+              <span className="font-body text-xs leading-4 tracking-[1.2px] uppercase text-[#75777E]">Total Admin</span>
+              <span className="material-symbols-outlined text-[#E9C176]" style={{ fontSize: '22px' }}>manage_accounts</span>
             </div>
             <div className="flex flex-col">
               <span className="font-headline font-normal text-[48px] leading-[48px] text-[#0D1C32]">
-                {loading ? '...' : stats.total_users}
+                {loading ? '...' : stats.total}
               </span>
               <div className="flex items-center gap-1 mt-2 pt-2">
-                <span className="font-body text-xs leading-4 text-[#44474D]">registered accounts</span>
+                <span className="font-body text-xs leading-4 text-[#44474D]">registered operators</span>
               </div>
             </div>
           </div>
 
-          {/* Pro Plan Card */}
+          {/* Super Admins Card */}
           <div className="bg-white p-8 rounded-lg relative overflow-hidden">
             <div className="flex justify-between items-start mb-4">
-              <span className="font-body text-xs leading-4 tracking-[1.2px] uppercase text-[#75777E]">Total Pro Plan</span>
+              <span className="font-body text-xs leading-4 tracking-[1.2px] uppercase text-[#75777E]">Super Admin</span>
               <span className="material-symbols-outlined text-[#E9C176]" style={{ fontSize: '18px' }}>workspace_premium</span>
             </div>
             <div className="flex flex-col">
               <span className="font-headline font-normal text-[48px] leading-[48px] text-[#0D1C32]">
-                {loading ? '...' : stats.pro_users}
+                {loading ? '...' : stats.super_admins}
               </span>
               <div className="flex items-center gap-1 mt-2 pt-2">
-                <span className="font-body text-xs leading-4 text-[#44474D]">active pro subscribers</span>
+                <span className="font-body text-xs leading-4 text-[#44474D]">full access roles</span>
               </div>
             </div>
           </div>
 
-          {/* Standard Plan Card */}
+          {/* Standard Admins Card */}
           <div className="bg-white p-8 rounded-lg relative overflow-hidden">
             <div className="flex justify-between items-start mb-4">
-              <span className="font-body text-xs leading-4 tracking-[1.2px] uppercase text-[#75777E]">Total Standard Plan</span>
+              <span className="font-body text-xs leading-4 tracking-[1.2px] uppercase text-[#75777E]">Standard Admin</span>
               <span className="material-symbols-outlined text-[#E9C176]" style={{ fontSize: '17px' }}>grade</span>
             </div>
             <div className="flex flex-col">
               <span className="font-headline font-normal text-[48px] leading-[48px] text-[#0D1C32]">
-                {loading ? '...' : stats.standard_users}
+                {loading ? '...' : stats.standard_admins}
               </span>
               <div className="flex items-center gap-1 mt-2 pt-2">
-                <span className="font-body text-xs leading-4 text-[#44474D]">active basic plan users</span>
+                <span className="font-body text-xs leading-4 text-[#44474D]">limited control roles</span>
               </div>
             </div>
           </div>
         </section>
 
-        {/* User Table Section */}
+        {/* Admins Table Section */}
         <section className="px-12 py-10 flex-1">
           <div
             className="bg-white overflow-hidden flex flex-col"
@@ -506,7 +511,7 @@ const AdminDashboardPage = () => {
                   <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#75777E]" style={{ fontSize: '14px' }}>search</span>
                   <input
                     type="text"
-                    placeholder="Filter users..."
+                    placeholder="Filter admins..."
                     value={filterQuery}
                     onChange={(e) => {
                       setFilterQuery(e.target.value);
@@ -528,16 +533,16 @@ const AdminDashboardPage = () => {
                     }}
                     className="bg-transparent text-sm text-[#6B7280] font-body outline-none cursor-pointer pr-4"
                   >
-                    <option value="id_asc">ID: 1 to n</option>
-                    <option value="id_desc">ID: n to 1</option>
-                    <option value="name_asc">User: A to Z</option>
-                    <option value="name_desc">User: Z to A</option>
+                    <option value="id_asc">ID: A to Z</option>
+                    <option value="id_desc">ID: Z to A</option>
+                    <option value="name_asc">Admin: A to Z</option>
+                    <option value="name_desc">Admin: Z to A</option>
                   </select>
                 </div>
               </div>
 
               <span className="font-body font-medium text-xs leading-4 text-[#44474D]">
-                Showing {sortedAndFilteredUsers.length} of {users.length} users
+                Showing {sortedAndFilteredAdmins.length} of {admins.length} admins
               </span>
             </div>
 
@@ -546,12 +551,12 @@ const AdminDashboardPage = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-white" style={{ borderBottom: '1px solid rgba(197, 198, 205, 0.1)' }}>
-                    <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E]">User ID</th>
-                    <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E]">Username</th>
+                    <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E]">Admin ID</th>
+                    <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E]">Admin Name</th>
                     <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E]">Email</th>
-                    <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E]">Organization</th>
-                    <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E]">Plan</th>
-                    <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E]">Phone No</th>
+                    <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E]">Password</th>
+                    <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E]">DOB</th>
+                    <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E]">Role</th>
                     <th className="px-8 py-5 font-body font-bold text-xs leading-4 tracking-[1.8px] uppercase text-[#75777E] text-right">Actions</th>
                   </tr>
                 </thead>
@@ -559,82 +564,102 @@ const AdminDashboardPage = () => {
                   {loading ? (
                     <tr>
                       <td colSpan="7" className="px-8 py-10 text-center font-body text-sm text-[#75777E]">
-                        Loading registered users...
+                        Loading registered administrators...
                       </td>
                     </tr>
-                  ) : sortedAndFilteredUsers.length === 0 ? (
+                  ) : sortedAndFilteredAdmins.length === 0 ? (
                     <tr>
                       <td colSpan="7" className="px-8 py-10 text-center font-body text-sm text-[#75777E]">
-                        No users found.
+                        No administrators found.
                       </td>
                     </tr>
                   ) : (
-                    paginatedUsers.map((user, index) => (
+                    paginatedAdmins.map((admin, index) => (
                       <tr
-                        key={user.id || index}
+                        key={admin.adminid || index}
                         className="group hover:bg-[#F3F4F6] transition-colors"
                         style={{ borderTop: index > 0 ? '1px solid rgba(197, 198, 205, 0.05)' : 'none' }}
                       >
-                        {/* User ID */}
+                        {/* Admin ID */}
                         <td className="px-8 py-6">
-                          <span className="font-mono text-sm font-semibold text-[#0D1C32]">{user.id}</span>
+                          <span className="font-mono text-xs font-semibold text-[#0D1C32]">{admin.adminid}</span>
                         </td>
 
-                        {/* Username */}
+                        {/* Admin Name */}
                         <td className="px-8 py-6">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-lg bg-[#0D1C32] text-white flex items-center justify-center font-bold text-xs ring-1 ring-transparent group-hover:ring-[#E9C176] transition-all flex-shrink-0">
-                              {getInitials(user.name)}
+                              {getInitials(admin.name)}
                             </div>
-                            <div className="flex flex-col">
-                              <span className="font-headline font-bold text-sm leading-5 text-[#0D1C32]">{user.name}</span>
-                              <span className="font-body text-xs text-gray-500">@{user.username}</span>
-                            </div>
+                            <span className="font-headline font-bold text-sm leading-5 text-[#0D1C32]">{admin.name}</span>
                           </div>
                         </td>
 
                         {/* Email */}
                         <td className="px-8 py-6">
-                          <span className="font-body text-sm text-[#44474D]">{user.email}</span>
+                          <span className="font-body text-sm text-[#44474D]">{admin.email || admin.adminid}</span>
                         </td>
 
-                        {/* Organization */}
+                        {/* Password with Hover/Toggle visibility */}
                         <td className="px-8 py-6">
-                          <span className="font-body font-medium text-sm leading-5 text-[#0D1C32]">{user.org}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm text-[#44474D]">
+                              {visiblePasswords[admin.adminid] ? admin.password : '••••••••'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setVisiblePasswords(prev => ({
+                                  ...prev,
+                                  [admin.adminid]: !prev[admin.adminid]
+                                }));
+                              }}
+                              className="text-gray-400 hover:text-[#0D1C32] transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">
+                                {visiblePasswords[admin.adminid] ? 'visibility_off' : 'visibility'}
+                              </span>
+                            </button>
+                          </div>
                         </td>
 
-                        {/* Plan Dropdown */}
+                        {/* DOB */}
                         <td className="px-8 py-6">
-                          <select
-                            value={user.plan}
-                            onChange={(e) => handlePlanChange(user.id, e.target.value)}
-                            className={`appearance-none cursor-pointer px-3 py-1 font-body font-bold text-[10px] leading-3 tracking-[1px] uppercase rounded-full outline-none border-0 transition-all ${user.plan === 'Pro' ? 'bg-[#FFDEA5] text-[#261900]' : 'bg-[#E7E8EA] text-[#44474D]'}`}
-                            style={{ backgroundImage: 'none' }}
+                          <span className="font-body text-sm text-[#44474D]">{admin.dob || 'N/A'}</span>
+                        </td>
+
+                        {/* Role */}
+                        <td className="px-8 py-6">
+                          <span
+                            className={`px-3 py-1 font-body font-bold text-[10px] leading-3 tracking-[1px] uppercase rounded-full ${
+                              admin.role === 'super_admin' ? 'bg-[#FFDEA5] text-[#261900]' : 'bg-[#E7E8EA] text-[#44474D]'
+                            }`}
                           >
-                            <option value="Standard">STANDARD</option>
-                            <option value="Pro">PRO</option>
-                          </select>
+                            {admin.role === 'super_admin' ? 'SUPER ADMIN' : 'ADMIN'}
+                          </span>
                         </td>
 
-                        {/* Phone No */}
-                        <td className="px-8 py-6">
-                          <span className="font-body text-sm text-[#44474D]">{user.phone_no || 'N/A'}</span>
-                        </td>
-
-                        {/* Actions (Always visible per prompt rule) */}
+                        {/* Actions */}
                         <td className="px-8 py-6 text-right">
                           <div className="flex justify-end gap-3">
                             <button
-                              onClick={() => handleEditClick(user)}
+                              onClick={() => handleEditClick(admin)}
                               className="p-2 text-[#75777E] hover:text-[#0D1C32] transition-colors"
-                              title="Edit User"
+                              title="Edit Admin"
                             >
                               <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>edit_note</span>
                             </button>
+                            
+                            {/* Deleting own active account is disabled */}
                             <button
-                              onClick={() => handleDeleteClick(user)}
-                              className="p-2 text-[#75777E] hover:text-[#BA1A1A] transition-colors"
-                              title="Delete User"
+                              onClick={() => handleDeleteClick(admin)}
+                              disabled={admin.adminid === currentAdmin?.adminid}
+                              className={`p-2 transition-colors ${
+                                admin.adminid === currentAdmin?.adminid 
+                                  ? 'text-gray-200 cursor-not-allowed' 
+                                  : 'text-[#75777E] hover:text-[#BA1A1A]'
+                              }`}
+                              title={admin.adminid === currentAdmin?.adminid ? 'Cannot delete logged in account' : 'Delete Admin'}
                             >
                               <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>delete</span>
                             </button>
@@ -711,7 +736,7 @@ const AdminDashboardPage = () => {
         </footer>
       </main>
 
-      {/* Add/Edit Modal (With premium overlay design) */}
+      {/* Add/Edit Modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] animate-fade-in">
           <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8 shadow-2xl relative border border-gray-100 flex flex-col gap-6">
@@ -725,10 +750,10 @@ const AdminDashboardPage = () => {
 
             <div>
               <h2 className="font-headline font-semibold text-2xl text-[#0D1C32]">
-                {isEditMode ? 'Edit User Details' : 'Add New User'}
+                {isEditMode ? 'Edit Administrator Details' : 'Add New Administrator'}
               </h2>
               <p className="font-body text-xs text-gray-500 mt-1">
-                {isEditMode ? 'Modify details for the selected user profile.' : 'Create a new user profile with specific plan and validation checks.'}
+                {isEditMode ? 'Modify administrative credentials and system permissions.' : 'Create a new administrative profile with secure credentials.'}
               </p>
             </div>
 
@@ -745,7 +770,7 @@ const AdminDashboardPage = () => {
             )}
 
             <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-6 font-body text-sm">
-              {/* Name */}
+              {/* Full Name */}
               <div className="flex flex-col gap-1.5 col-span-2">
                 <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Full Name</label>
                 <input
@@ -758,28 +783,29 @@ const AdminDashboardPage = () => {
                 />
               </div>
 
-              {/* Username */}
+              {/* Admin ID */}
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Username</label>
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Admin ID (Username/Key)</label>
                 <input
                   type="text"
                   required
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  placeholder="e.g. marcus_s"
-                  className="px-4 py-2.5 rounded-lg border border-gray-200 focus:border-[#E9C176] focus:ring-2 focus:ring-[#E9C176]/20 outline-none transition-all text-[#0D1C32]"
+                  disabled={isEditMode}
+                  value={formData.adminid}
+                  onChange={(e) => setFormData({ ...formData, adminid: e.target.value })}
+                  placeholder="e.g. AdminDaniyal@cust.com"
+                  className={`px-4 py-2.5 rounded-lg border border-gray-200 focus:border-[#E9C176] focus:ring-2 focus:ring-[#E9C176]/20 outline-none transition-all text-[#0D1C32] ${isEditMode ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                 />
               </div>
 
               {/* Email */}
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Email (Gmail only)</label>
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Email Address</label>
                 <input
                   type="email"
                   required
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="e.g. user@gmail.com"
+                  placeholder="e.g. admin@cust.com"
                   className="px-4 py-2.5 rounded-lg border border-gray-200 focus:border-[#E9C176] focus:ring-2 focus:ring-[#E9C176]/20 outline-none transition-all text-[#0D1C32]"
                 />
               </div>
@@ -797,62 +823,52 @@ const AdminDashboardPage = () => {
                 />
               </div>
 
-              {/* Organization */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Organization</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.org}
-                  onChange={(e) => setFormData({ ...formData, org: e.target.value })}
-                  placeholder="e.g. Sterling & Associates"
-                  className="px-4 py-2.5 rounded-lg border border-gray-200 focus:border-[#E9C176] focus:ring-2 focus:ring-[#E9C176]/20 outline-none transition-all text-[#0D1C32]"
-                />
-              </div>
+              {/* Confirm Password (only on Add Mode) */}
+              {!isEditMode ? (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Confirm Password</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                    placeholder="Repeat password"
+                    className="px-4 py-2.5 rounded-lg border border-gray-200 focus:border-[#E9C176] focus:ring-2 focus:ring-[#E9C176]/20 outline-none transition-all text-[#0D1C32]"
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {/* System Role (Editable in modal) */}
+                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">System Role</label>
+                  <select
+                    value={formData.role}
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                    className="px-4 py-2.5 rounded-lg border border-gray-200 focus:border-[#E9C176] focus:ring-2 focus:ring-[#E9C176]/20 outline-none transition-all text-[#0D1C32] bg-white"
+                  >
+                    <option value="admin">Administrator</option>
+                    <option value="super_admin">Super Administrator</option>
+                  </select>
+                </div>
+              )}
 
-              {/* Phone Number */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Phone Number</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.phone_no}
-                  onChange={(e) => setFormData({ ...formData, phone_no: e.target.value })}
-                  placeholder="e.g. +92 300 1234567"
-                  className="px-4 py-2.5 rounded-lg border border-gray-200 focus:border-[#E9C176] focus:ring-2 focus:ring-[#E9C176]/20 outline-none transition-all text-[#0D1C32]"
-                />
-              </div>
-
-              {/* Plan */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Plan</label>
-                <select
-                  value={formData.plan}
-                  onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
-                  className="px-4 py-2.5 rounded-lg border border-gray-200 focus:border-[#E9C176] focus:ring-2 focus:ring-[#E9C176]/20 outline-none transition-all text-[#0D1C32] bg-white"
-                >
-                  <option value="Standard">Standard</option>
-                  <option value="Pro">Pro</option>
-                </select>
-              </div>
-
-              {/* Gender */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Gender</label>
-                <select
-                  value={formData.gender}
-                  onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                  className="px-4 py-2.5 rounded-lg border border-gray-200 focus:border-[#E9C176] focus:ring-2 focus:ring-[#E9C176]/20 outline-none transition-all text-[#0D1C32] bg-white"
-                >
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
+              {/* System Role Selection for ADD Mode */}
+              {!isEditMode && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">System Role</label>
+                  <select
+                    value={formData.role}
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                    className="px-4 py-2.5 rounded-lg border border-gray-200 focus:border-[#E9C176] focus:ring-2 focus:ring-[#E9C176]/20 outline-none transition-all text-[#0D1C32] bg-white"
+                  >
+                    <option value="admin">Administrator</option>
+                    <option value="super_admin">Super Administrator</option>
+                  </select>
+                </div>
+              )}
 
               {/* Date of Birth */}
               <div className="flex flex-col gap-1.5 col-span-2">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Date of Birth (Must be &gt; 16 years old)</label>
+                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Date of Birth</label>
                 <input
                   type="date"
                   required
@@ -873,9 +889,10 @@ const AdminDashboardPage = () => {
                 </button>
                 <button
                   type="submit"
+                  disabled={saving}
                   className="px-8 py-2.5 rounded-lg bg-[#0D1C32] text-white hover:opacity-90 transition-opacity font-medium"
                 >
-                  {isEditMode ? 'Save Changes' : 'Create User'}
+                  {saving ? 'Submitting...' : isEditMode ? 'Save Changes' : 'Create Admin'}
                 </button>
               </div>
             </form>
@@ -883,26 +900,26 @@ const AdminDashboardPage = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      {deleteUserId && (
+      {/* Delete Confirmation Modal (Center of the screen) */}
+      {deleteAdminId && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] animate-fade-in">
           <div className="bg-white rounded-2xl w-full max-w-sm p-8 shadow-2xl relative border border-gray-100 flex flex-col items-center gap-6 text-center">
             <span className="material-symbols-outlined text-[#BA1A1A] bg-[#FFDAD6] p-4 rounded-full" style={{ fontSize: '32px' }}>delete_forever</span>
             <div className="flex flex-col gap-2">
-              <h2 className="font-headline font-semibold text-xl text-[#0D1C32]">Delete User?</h2>
+              <h2 className="font-headline font-semibold text-xl text-[#0D1C32]">Delete Admin?</h2>
               <p className="font-body text-sm text-gray-500">
-                Are you sure to delete the user <span className="font-semibold text-[#191C1E]">{deleteUserId}</span>?
+                Are you sure to delete the admin <span className="font-semibold text-[#191C1E]">{deleteAdminId}</span>?
               </p>
             </div>
             <div className="flex justify-center gap-4 w-full mt-2">
               <button
-                onClick={() => setDeleteUserId(null)}
+                onClick={() => setDeleteAdminId(null)}
                 className="flex-1 px-4 py-2.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-all font-medium text-gray-600 text-sm"
               >
                 No
               </button>
               <button
-                onClick={confirmDeleteUser}
+                onClick={confirmDeleteAdmin}
                 className="flex-1 px-4 py-2.5 rounded-lg bg-[#BA1A1A] text-white hover:opacity-90 transition-opacity font-medium text-sm"
               >
                 Yes
@@ -911,10 +928,8 @@ const AdminDashboardPage = () => {
           </div>
         </div>
       )}
-
-
     </div>
   );
 };
 
-export default AdminDashboardPage;
+export default AdminManagementPage;

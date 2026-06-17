@@ -3,15 +3,55 @@ import { Link, useNavigate } from 'react-router-dom';
 
 const AdminLoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
+  const [adminid, setAdminid] = useState('');
+  const [password, setPassword] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setLoading(true);
+
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ adminid, password }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem('currentAdmin', JSON.stringify(data));
+        navigate('/admin/dashboard');
+      } else {
+        const data = await res.json();
+        setErrorMsg(data?.detail || 'Invalid Admin ID or Password.');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setErrorMsg('Failed to connect to the authentication server.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="flex flex-col bg-[#0D1C32] min-h-screen w-full">
 
       {/* Transactional Header: Suppressed Nav */}
-      <header className="w-full flex justify-center items-center px-8 py-8 h-[100px]">
+      <header className="w-full flex justify-between items-center px-12 py-8 h-[100px] z-10">
         <Link to="/" className="font-headline font-normal text-[30px] leading-9 tracking-[-1.5px] text-[#E9C176]">
           Verdict AI
+        </Link>
+        <Link
+          to="/"
+          className="bg-transparent border border-[#76849F] border-opacity-30 hover:border-[#E9C176] hover:text-[#E9C176] text-[#76849F] px-5 py-2 rounded-[2px] font-body text-xs font-semibold leading-5 tracking-[1px] uppercase transition-all duration-300"
+        >
+          Back
         </Link>
       </header>
 
@@ -85,13 +125,17 @@ const AdminLoginPage = () => {
               </p>
             </div>
 
+            {errorMsg && (
+              <div className="bg-[#FFDAD6] text-[#93000A] p-4 mb-6 rounded-[2px] text-xs font-body border border-[#FFDAD6] flex items-center gap-2">
+                <span className="material-symbols-outlined text-[#BA1A1A]" style={{ fontSize: '16px' }}>error</span>
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
             {/* Form */}
             <form
               className="flex flex-col gap-6"
-              onSubmit={(e) => {
-                e.preventDefault();
-                navigate('/admin/dashboard');
-              }}
+              onSubmit={handleSubmit}
             >
 
               {/* Admin ID Field */}
@@ -103,7 +147,10 @@ const AdminLoginPage = () => {
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[#75777E]" style={{ fontSize: '14px' }}>badge</span>
                   <input
                     type="text"
-                    placeholder="ADM-000-000"
+                    value={adminid}
+                    onChange={(e) => setAdminid(e.target.value)}
+                    required
+                    placeholder="e.g. AdminDaniyal@cust.com"
                     className="w-full bg-[#F3F4F6] pl-11 pr-4 py-[15px] font-body text-sm leading-[17px] text-[#191C1E] placeholder:text-[#C5C6CD] outline-none border-none border-l-2 border-transparent focus:border-l-2 focus:border-l-[#E9C176] focus:ring-0 transition-all"
                   />
                 </div>
@@ -118,6 +165,9 @@ const AdminLoginPage = () => {
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[#75777E]" style={{ fontSize: '14px' }}>key</span>
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
                     placeholder="••••••••••••"
                     className="w-full bg-[#F3F4F6] pl-11 pr-12 py-[15px] font-body text-sm leading-[17px] text-[#191C1E] placeholder:text-[#C5C6CD] outline-none border-none border-l-2 border-transparent focus:border-l-2 focus:border-l-[#E9C176] focus:ring-0 transition-all"
                   />
@@ -149,9 +199,10 @@ const AdminLoginPage = () => {
               {/* Login Button */}
               <button
                 type="submit"
-                className="w-full bg-[#0D1C32] text-white py-4 font-body font-semibold text-sm leading-5 tracking-[1.4px] uppercase text-center flex items-center justify-center gap-2 hover:bg-black active:scale-[0.98] transition-all duration-150 group"
+                disabled={loading}
+                className="w-full bg-[#0D1C32] text-white py-4 font-body font-semibold text-sm leading-5 tracking-[1.4px] uppercase text-center flex items-center justify-center gap-2 hover:bg-black active:scale-[0.98] disabled:opacity-50 transition-all duration-150 group"
               >
-                <span>Login</span>
+                <span>{loading ? 'Authenticating...' : 'Login'}</span>
                 <span className="material-symbols-outlined text-white transition-transform group-hover:translate-x-1" style={{ fontSize: '14px' }}>arrow_forward</span>
               </button>
             </form>
