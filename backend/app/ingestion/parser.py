@@ -515,26 +515,84 @@ def _chunk_text(text: str, size: int = 12000, overlap: int = 500) -> List[str]:
 
 
 # ---------------------------------------------------------------------------
-# Ollama / LLM interaction
+# Groq / LLM interaction (Ollama commented as requested)
 # ---------------------------------------------------------------------------
 
-async def call_ollama(prompt: str, system: str) -> str:
+# OLD OLLAMA IMPLEMENTATION (COMMENTED OUT AS REQUESTED):
+# async def call_ollama(prompt: str, system: str) -> str:
+#     client = AsyncOpenAI(
+#         base_url=settings.OLLAMA_BASE_URL,
+#         api_key="ollama",
+#         max_retries=0,
+#     )
+#     res = await client.chat.completions.create(
+#         model=settings.OLLAMA_MODEL,
+#         temperature=0,
+#         timeout=10,
+#         response_format={"type": "json_object"},
+#         messages=[
+#             {"role": "system", "content": system},
+#             {"role": "user", "content": prompt},
+#         ],
+#     )
+#     return res.choices[0].message.content or ""
+
+
+async def call_groq(prompt: str, system: str) -> str:
+    """
+    Call Groq API using OpenAI-compatible AsyncOpenAI client.
+    """
+    api_key = settings.GROQ_API_KEY or os.getenv("GROQ_API_KEY", "")
+    if not api_key:
+        logger.warning("GROQ_API_KEY is not configured in settings or .env file.")
+        return ""
+
     client = AsyncOpenAI(
-        base_url=settings.OLLAMA_BASE_URL,
-        api_key="ollama",
-        max_retries=0,
+        base_url=settings.GROQ_BASE_URL or "https://api.groq.com/openai/v1",
+        api_key=api_key,
+        max_retries=2,
     )
-    res = await client.chat.completions.create(
-        model=settings.OLLAMA_MODEL,
-        temperature=0,
-        timeout=10,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    return res.choices[0].message.content or ""
+
+    model_name = settings.GROQ_MODEL or "llama-3.3-70b-versatile"
+    try:
+        res = await client.chat.completions.create(
+            model=model_name,
+            temperature=0,
+            timeout=30,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        return res.choices[0].message.content or ""
+    except Exception as err:
+        logger.warning(f"Groq API call with response_format json_object failed ({err}), retrying standard call...")
+        try:
+            res = await client.chat.completions.create(
+                model=model_name,
+                temperature=0,
+                timeout=30,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            return res.choices[0].message.content or ""
+        except Exception as e:
+            logger.error(f"Groq API error: {e}")
+            return ""
+
+
+async def call_llm(prompt: str, system: str) -> str:
+    """
+    Unified LLM caller routing to Groq Cloud API.
+    """
+    return await call_groq(prompt, system)
+
+
+# Alias call_ollama to call_llm for backwards compatibility across module calls
+call_ollama = call_llm
 
 
 # ---------------------------------------------------------------------------

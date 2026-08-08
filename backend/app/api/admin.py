@@ -301,18 +301,19 @@ async def admin_status():
 
     total_documents = await db.documents.count_documents({})
 
-    statuses = ["complete", "failed", "uploaded", "processing"]
+    statuses = ["complete", "parsed", "failed", "uploaded", "processing"]
     by_status = {}
     for status in statuses:
         by_status[status] = await db.documents.count_documents({"status": status})
 
-    cursor = db.jobs.find({}, {"_id": 0}).sort("created_at", -1).limit(5)
-    recent_jobs = await cursor.to_list(length=5)
+    cursor = db.jobs.find({}, {"_id": 0}).sort("created_at", -1)
+    all_jobs = await cursor.to_list(length=None)
 
     return {
         "total_documents": total_documents,
         "by_status": by_status,
-        "recent_jobs": recent_jobs,
+        "recent_jobs": all_jobs[:5],
+        "all_jobs": all_jobs,
     }
 
 

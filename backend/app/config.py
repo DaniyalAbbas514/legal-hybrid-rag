@@ -7,7 +7,16 @@ class Settings(BaseSettings):
     REDIS_URL: str = ""
     DB_NAME: str = "legal_rag"
     OPENAI_API_KEY: str = ""
-    LLM_PROVIDER: str = "ollama"
+    
+    # Groq Cloud API Settings
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+
+    # LLM Provider: "groq" or "ollama"
+    LLM_PROVIDER: str = "groq"
+
+    # Ollama Local Settings (Fallback)
     OLLAMA_MODEL: str = "mistral"
     OLLAMA_BASE_URL: str = "http://localhost:11434/v1"
 

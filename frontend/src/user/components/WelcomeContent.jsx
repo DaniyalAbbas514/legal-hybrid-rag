@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const WelcomePage = () => {
+const WelcomeContent = () => {
   const navigate = useNavigate();
   const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 
@@ -17,12 +17,11 @@ const WelcomePage = () => {
   };
 
   if (!currentUser) {
-    return null; // Don't flash content before redirect
+    return null;
   }
 
   return (
     <div className="flex flex-col bg-[#0D1C32] min-h-screen w-full relative overflow-hidden">
-      
       {/* Premium Ambient Background Blurs */}
       <div
         className="absolute pointer-events-none"
@@ -85,4 +84,4 @@ const WelcomePage = () => {
   );
 };
 
-export default WelcomePage;
+export default WelcomeContent;
