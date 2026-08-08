@@ -598,10 +598,10 @@ const AdminCasesPage = () => {
 
               {uploadResult && (
                 <div className="mt-4 bg-[#F8F9FB] p-4 rounded-lg">
-                  <p className="font-body text-sm text-[#0D1C32]">
+                  <p className="font-body text-lg text-[#0D1C32]">
                     Upload complete: <strong>{uploadResult.filename}</strong>
                   </p>
-                  <p className="font-body text-xs text-[#44474D] mt-1">PDF ID: {uploadResult.pdf_id} | Type: {uploadResult.detected_type}</p>
+                  <p className="font-body text-sm text-[#44474D] mt-1">PDF ID: {uploadResult.pdf_id} | Type: {uploadResult.detected_type}</p>
                 </div>
               )}
             </div>
@@ -624,9 +624,9 @@ const AdminCasesPage = () => {
                           <span className="material-symbols-outlined text-[#0D1C32]" style={{ fontSize: '14px' }}>task_alt</span>
                         </div>
                         <div className="flex flex-col gap-1">
-                          <span className="font-body font-bold text-xs leading-4 text-[#0D1C32]">{job.filename || 'Unnamed PDF'}</span>
-                          <span className="font-body text-[10px] leading-[15px] text-[#44474D]">
-                            {`${(job.status || 'uploaded').toUpperCase()} • ${formatRelativeTime(job.created_at)} (${job.created_at ? new Date(job.created_at).toLocaleString() : 'N/A'}) | Ref: ${job.job_id || 'N/A'}`}
+                          <span className="font-body font-bold text-base leading-6 text-[#0D1C32]">{job.filename || 'Unnamed PDF'}</span>
+                          <span className="font-body text-xs leading-[18px] text-[#44474D]">
+                            {`${(job.status || 'uploaded').toUpperCase()} | Ref: ${job.job_id || 'N/A'}`}
                           </span>
                         </div>
                       </div>
@@ -789,7 +789,7 @@ const AdminCasesPage = () => {
                       <div>
                         <p className="font-body font-semibold text-sm text-[#0D1C32]">{job.filename || 'Unnamed PDF'}</p>
                         <p className="font-body text-xs text-[#6B7280] mt-1">
-                          {`${(job.status || 'uploaded').toUpperCase()} • ${formatRelativeTime(job.created_at)} (${job.created_at ? new Date(job.created_at).toLocaleString() : 'N/A'}) | Ref: ${job.job_id || 'N/A'}`}
+                          {`${(job.status || 'uploaded').toUpperCase()} | Ref: ${job.job_id || 'N/A'}`}
                         </p>
                       </div>
                       <button
