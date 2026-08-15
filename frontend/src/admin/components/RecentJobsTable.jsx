@@ -42,15 +42,6 @@ const RecentJobsTable = ({
               className="w-full pl-9 pr-4 py-2 bg-[#F3F4F6] text-xs font-body text-[#191C1E] rounded-lg outline-none focus:ring-1 focus:ring-[#E9C176]"
             />
           </div>
-
-          {/* View All History Trigger Button */}
-          <button
-            onClick={() => setShowAllModal(true)}
-            className="text-xs font-bold text-[#0D1C32] hover:text-[#E9C176] transition-colors flex items-center gap-1 flex-shrink-0"
-          >
-            View All History
-            <span className="material-symbols-outlined text-sm">open_in_new</span>
-          </button>
         </div>
       </div>
 

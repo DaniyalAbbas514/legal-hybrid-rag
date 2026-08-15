@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminSidebar from '../components/AdminSidebar';
 import AdminHeader from '../components/AdminHeader';
-import AdminFooter from '../components/AdminFooter';
 import AdminStatsCard from '../components/AdminStatsCard';
 import AdminPagination from '../components/AdminPagination';
 import AdminDeleteModal from '../components/AdminDeleteModal';
@@ -265,8 +264,6 @@ const AdminSupportPage = () => {
             />
           </div>
         </div>
-
-        <AdminFooter />
       </main>
 
       {/* Delete Confirmation Modal */}

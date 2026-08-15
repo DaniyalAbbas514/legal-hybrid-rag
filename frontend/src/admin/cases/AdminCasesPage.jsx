@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminSidebar from '../components/AdminSidebar';
 import AdminHeader from '../components/AdminHeader';
-import AdminFooter from '../components/AdminFooter';
 import AdminStatsCard from '../components/AdminStatsCard';
 import AdminDeleteModal from '../components/AdminDeleteModal';
 import IngestionProgress from '../components/IngestionProgress';
@@ -121,15 +120,16 @@ const AdminCasesPage = () => {
   }, [activeJobId, activeJobStatus?.status]);
 
   const handleCancelIngestion = async () => {
-    if (!activeJobId) return;
+    const jobToCancel = activeJobId;
+    if (!jobToCancel) return;
 
-    if (activeJobId === 'verifying') {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    } else {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    if (jobToCancel !== 'verifying') {
       try {
-        await fetch(`/api/admin/jobs/${activeJobId}`, { method: 'DELETE' });
+        await fetch(`/api/admin/jobs/${jobToCancel}`, { method: 'DELETE' });
       } catch (err) {
         console.error("Error cancelling job:", err);
       }
@@ -139,6 +139,7 @@ const AdminCasesPage = () => {
     setActiveJobStatus(null);
     setUploading(false);
     fetchRecentJobs(false);
+    fetchAllJobs();
   };
 
   const safeReadJson = async (response) => {
@@ -221,16 +222,19 @@ const AdminCasesPage = () => {
     await fetchAllJobs();
   };
 
+  const parsedJobs = React.useMemo(() => {
+    return allJobs.filter((job) => job.status === 'parsed' || job.status === 'complete');
+  }, [allJobs]);
+
   const filteredJobs = React.useMemo(() => {
-    if (!searchTerm.trim()) return allJobs;
+    if (!searchTerm.trim()) return parsedJobs;
     const term = searchTerm.toLowerCase().trim();
-    return allJobs.filter((job) => {
+    return parsedJobs.filter((job) => {
       const matchFilename = (job.filename || '').toLowerCase().includes(term);
       const matchJobId = (job.job_id || '').toLowerCase().includes(term);
-      const matchStatus = (job.status || '').toLowerCase().includes(term);
-      return matchFilename || matchJobId || matchStatus;
+      return matchFilename || matchJobId;
     });
-  }, [allJobs, searchTerm]);
+  }, [parsedJobs, searchTerm]);
 
   const totalPages = Math.ceil(filteredJobs.length / JOBS_PER_PAGE);
   const safeCurrentPage = Math.min(currentPage, Math.max(totalPages, 1));
@@ -251,8 +255,12 @@ const AdminCasesPage = () => {
   useEffect(() => {
     if (!activeJobId || activeJobId === 'verifying') return;
 
-    const terminalStates = ['parsed', 'parse_failed', 'extraction_failed'];
-    if (activeJobStatus && terminalStates.includes(activeJobStatus.status)) {
+    const terminalStates = ['parsed', 'complete', 'parse_failed', 'extraction_failed'];
+    if (activeJobStatus && (activeJobStatus.status === 'parsed' || activeJobStatus.status === 'complete')) {
+      setActiveJobId(null);
+      setActiveJobStatus(null);
+      setUploading(false);
+      fetchRecentJobs(false);
       return;
     }
 
@@ -264,20 +272,35 @@ const AdminCasesPage = () => {
           const data = await res.json();
           if (isSubscribed) {
             setActiveJobStatus(data);
-            if (terminalStates.includes(data.status)) {
+            if (data.status === 'parsed' || data.status === 'complete') {
               clearInterval(pollInterval);
+              // Immediately remove the progress loading bar upon successful parse
+              setActiveJobId(null);
+              setActiveJobStatus(null);
+              setUploading(false);
               fetchRecentJobs(false);
+              fetchAllJobs();
+            } else if (terminalStates.includes(data.status)) {
+              clearInterval(pollInterval);
+              setUploading(false);
+              fetchRecentJobs(false);
+              fetchAllJobs();
             }
           }
         } else {
           if (res.status === 404) {
             clearInterval(pollInterval);
+            if (isSubscribed) {
+              setActiveJobId(null);
+              setActiveJobStatus(null);
+              setUploading(false);
+            }
           }
         }
       } catch (err) {
         console.error("Error polling job status:", err);
       }
-    }, 2000);
+    }, 1000);
 
     return () => {
       isSubscribed = false;
@@ -413,14 +436,25 @@ const AdminCasesPage = () => {
                 PDF documents undergo multi-stage text extraction, chunking, vector embedding, and database ingestion.
               </p>
             </div>
-            <button
-              onClick={handlePickFile}
-              disabled={uploading}
-              className="relative z-10 bg-[#E9C176] text-[#261900] px-6 py-3.5 rounded-xl font-body font-bold text-sm hover:opacity-90 transition-opacity flex items-center gap-2 shadow-lg disabled:opacity-50"
-            >
-              <span className="material-symbols-outlined text-lg">upload_file</span>
-              {uploading ? 'Processing Ingestion...' : 'Select PDF File'}
-            </button>
+            <div className="relative z-10 flex items-center gap-3">
+              {activeJobId && (
+                <button
+                  onClick={handleCancelIngestion}
+                  className="bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-400/30 px-5 py-3.5 rounded-xl font-body font-bold text-sm transition-all flex items-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-lg">close</span>
+                  Cancel Ingestion
+                </button>
+              )}
+              <button
+                onClick={handlePickFile}
+                disabled={uploading}
+                className="bg-[#E9C176] text-[#261900] px-6 py-3.5 rounded-xl font-body font-bold text-sm hover:opacity-90 transition-opacity flex items-center gap-2 shadow-lg disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-lg">upload_file</span>
+                {uploading ? 'Processing Ingestion...' : 'Select PDF File'}
+              </button>
+            </div>
           </div>
 
           {uploadError && (
@@ -468,7 +502,7 @@ const AdminCasesPage = () => {
           <RecentJobsTable
             recentLoading={recentLoading}
             recentError={recentError}
-            allJobs={allJobs}
+            allJobs={parsedJobs}
             filteredJobs={filteredJobs}
             paginatedJobs={paginatedJobs}
             searchTerm={searchTerm}
@@ -481,8 +515,6 @@ const AdminCasesPage = () => {
             setDeleteTarget={setDeleteTarget}
           />
         </div>
-
-        <AdminFooter />
       </main>
 
       {/* Delete Modal */}

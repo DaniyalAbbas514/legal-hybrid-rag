@@ -20,9 +20,10 @@ const IngestionProgress = ({
         </div>
         <button
           onClick={handleCancelIngestion}
-          className="px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-red-200"
+          className="px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 hover:border-red-300 rounded-lg transition-colors border border-red-200 flex items-center gap-1.5 shadow-sm"
         >
-          Cancel Job
+          <span className="material-symbols-outlined text-base">cancel</span>
+          Cancel Ingestion
         </button>
       </div>
 

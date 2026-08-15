@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AdminSidebar from '../components/AdminSidebar';
 import AdminHeader from '../components/AdminHeader';
-import AdminFooter from '../components/AdminFooter';
 import AdminSettingsForm from '../components/AdminSettingsForm';
 
 const AdminSettingsPage = () => {
@@ -173,8 +172,6 @@ const AdminSettingsPage = () => {
             getInitials={getInitials}
           />
         </div>
-
-        <AdminFooter />
       </main>
     </div>
   );
