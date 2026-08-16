@@ -96,15 +96,13 @@ class ChromaStore:
             self.collection.delete(where={"file_id": file_id})
             logger.info(f"Deleted vector records in Chroma for file_id: {file_id}")
         except Exception as e:
-            logger.error(f"Error deleting Chroma vectors for file_id {file_id}: {e}")
-            raise e
+            logger.warning(f"Notice during Chroma vector deletion for file_id {file_id}: {e}")
 
     def delete_by_node_id(self, node_id: str):
         try:
             self.collection.delete(ids=[node_id])
             logger.info(f"Deleted vector record in Chroma for node_id: {node_id}")
         except Exception as e:
-            logger.error(f"Error deleting Chroma vector for node_id {node_id}: {e}")
-            raise e
+            logger.warning(f"Notice during Chroma vector deletion for node_id {node_id}: {e}")
 
 chroma_store = ChromaStore()

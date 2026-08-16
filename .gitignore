@@ -11,7 +11,10 @@ build/
 # Environment variables
 .env
 backend/.env
-backend/uploads/
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/app/connection/*
+!backend/app/connection/.gitkeep
 
 # Git
 .git
@@ -24,3 +27,27 @@ Thumbs.db
 
 # Docker (optional but good)
 docker-compose.override.yml
+
+# Local / temporary files
+api.txt
+
+# Testing, utilities, and classifier files
+test_*.py
+**/test_*.py
+test_runner.py
+backend/test_*.py
+backend/test_hybrid_self_loop.py
+backend/clear_cache.py
+backend/llm_pure_classifier.py
+backend/purge_embeddings_and_trees.py
+backend/run_classifier.py
+backend/test_and_verify.py
+backend/app/ingestion/llm_pure_classifier.py
+backend/app/ingestion/llm_section_classifier.py
+scratch/
+backend/scratch/
+chroma_db/
+backend/chroma_db/
+
+
+

@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
+    # Parser Configuration
+    USE_LLM_PARSER: bool = True
+    PARSER_MODE: str = "hybrid"  # Options: "hybrid", "pure_llm", "rule_based"
+
     # LLM Provider: "groq" or "ollama"
     LLM_PROVIDER: str = "groq"
 

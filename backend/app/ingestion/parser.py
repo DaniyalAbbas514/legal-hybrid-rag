@@ -8,6 +8,17 @@ from loguru import logger
 from openai import AsyncOpenAI
 
 from app.config import settings
+from app.ingestion.llm_pure_classifier import (
+    PureLLMClassifier,
+    ClassifiedJudgment,
+)
+from app.ingestion.llm_hybrid_classifier import (
+    HybridClassifier,
+)
+from app.ingestion.llm_section_classifier import (
+    call_llm_section_classifier,
+    _merge_llm_with_fallback,
+)
 
 SECTION_TYPES = [
     "HEADER_CORAM",
@@ -2150,9 +2161,65 @@ async def parse_sections(pdf_id: str, extracted_text: str) -> Dict:
     # Clean OCR errors from the text
     cleaned_text = _clean_ocr_text(extracted_text)
         
-    logger.info(f"[{pdf_id}] Parsing sections using content-based classifier")
-    final = _heading_fallback(pdf_id, cleaned_text)
-    final["parse_mode"] = "accurate"
+    use_llm = getattr(settings, "USE_LLM_PARSER", True)
+    parser_mode = getattr(settings, "PARSER_MODE", "hybrid")
+    final = None
+    
+    if use_llm:
+        if parser_mode == "pure_llm":
+            logger.info(f"[{pdf_id}] Performing Pure LLM section classification with Groq...")
+            try:
+                classifier = PureLLMClassifier()
+                classified: Optional[ClassifiedJudgment] = await classifier.classify(cleaned_text, pdf_id)
+                if classified:
+                    final = {
+                        "pdf_id": pdf_id,
+                        "parse_mode": "llm_pure",
+                        "confidence_score": classified.confidence_score,
+                        "context_heading": classified.header_coram.split('\n')[0][:120].strip() if classified.header_coram else "",
+                        "context_summary": "",
+                        "sections": [
+                            {"section_type": "HEADER_CORAM", "heading_found": classified.header_coram[:120] if classified.header_coram else None, "text": classified.header_coram, "confidence": classified.confidence_score},
+                            {"section_type": "FACTS", "heading_found": classified.facts[:120] if classified.facts else None, "text": classified.facts, "confidence": classified.confidence_score},
+                            {"section_type": "ARGUMENTS", "heading_found": classified.arguments[:120] if classified.arguments else None, "text": classified.arguments, "confidence": classified.confidence_score},
+                            {"section_type": "LEGAL_ISSUES", "heading_found": classified.legal_issues[:120] if classified.legal_issues else None, "text": classified.legal_issues, "confidence": classified.confidence_score},
+                            {"section_type": "ANALYSIS_RATIO", "heading_found": classified.analysis_ratio[:120] if classified.analysis_ratio else None, "text": classified.analysis_ratio, "confidence": classified.confidence_score},
+                            {"section_type": "FINAL_ORDER", "heading_found": classified.final_order[:120] if classified.final_order else None, "text": classified.final_order, "confidence": classified.confidence_score},
+                        ],
+                    }
+                    logger.info(f"[{pdf_id}] Pure LLM classification completed (confidence: {classified.confidence_score}).")
+            except Exception as e:
+                logger.error(f"[{pdf_id}] Pure LLM classification encountered error: {e}")
+        else:
+            # Default: Hybrid LLM Boundary Detection + NER/Regex Content Extraction (1 API call)
+            logger.info(f"[{pdf_id}] Performing Cost-Optimized Hybrid LLM Boundary + NER classification with Groq...")
+            try:
+                hybrid_classifier = HybridClassifier()
+                classified = await hybrid_classifier.classify(cleaned_text, pdf_id)
+                if classified:
+                    final = {
+                        "pdf_id": pdf_id,
+                        "parse_mode": "hybrid_llm_ner",
+                        "confidence_score": classified.confidence_score,
+                        "context_heading": classified.header_coram.split('\n')[0][:120].strip() if classified.header_coram else "",
+                        "context_summary": "",
+                        "sections": [
+                            {"section_type": "HEADER_CORAM", "heading_found": classified.header_coram[:120] if classified.header_coram else None, "text": classified.header_coram, "confidence": classified.confidence_score},
+                            {"section_type": "FACTS", "heading_found": classified.facts[:120] if classified.facts else None, "text": classified.facts, "confidence": classified.confidence_score},
+                            {"section_type": "ARGUMENTS", "heading_found": classified.arguments[:120] if classified.arguments else None, "text": classified.arguments, "confidence": classified.confidence_score},
+                            {"section_type": "LEGAL_ISSUES", "heading_found": classified.legal_issues[:120] if classified.legal_issues else None, "text": classified.legal_issues, "confidence": classified.confidence_score},
+                            {"section_type": "ANALYSIS_RATIO", "heading_found": classified.analysis_ratio[:120] if classified.analysis_ratio else None, "text": classified.analysis_ratio, "confidence": classified.confidence_score},
+                            {"section_type": "FINAL_ORDER", "heading_found": classified.final_order[:120] if classified.final_order else None, "text": classified.final_order, "confidence": classified.confidence_score},
+                        ],
+                    }
+                    logger.info(f"[{pdf_id}] Hybrid classification completed (confidence: {classified.confidence_score}).")
+            except Exception as e:
+                logger.error(f"[{pdf_id}] Hybrid classification encountered error: {e}")
+            
+    if not final:
+        logger.warning(f"[{pdf_id}] LLM parser unavailable/failed; using fallback parser.")
+        final = _heading_fallback(pdf_id, cleaned_text)
+        final["parse_mode"] = "accurate"
     
     logger.info(f"[{pdf_id}] Generating case context")
     context = await _generate_context(cleaned_text)

@@ -11,26 +11,48 @@ from app.database import db
 from app.ingestion.detector import detect_pdf_type
 from app.ingestion.extractor import extract
 from app.ingestion.parser import parse_sections
+from app.vectorstore.chroma_store import chroma_store
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 UPLOADS_DIR = Path(__file__).resolve().parents[2] / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
+CONNECTION_DIR = Path(__file__).resolve().parents[1] / "connection"
+CONNECTION_DIR.mkdir(parents=True, exist_ok=True)
+
+
+ACTIVE_INGESTION_TASKS: dict[str, asyncio.Task] = {}
+
 
 async def run_extraction(pdf_id: str, pdf_path: str, detected_type: str) -> None:
-    if db.jobs is None or db.documents is None:
-        logger.error(f"[{pdf_id}] Skipping extraction: database is not connected")
-        return
-
-    logger.info(f"[{pdf_id}] Extraction started")
-    await db.jobs.update_one(
-        {"job_id": pdf_id},
-        {"$set": {"status": "extracting"}},
-    )
-
     try:
+        if db.jobs is None or db.documents is None:
+            logger.error(f"[{pdf_id}] Skipping extraction: database is not connected")
+            return
+
+        async def is_cancelled() -> bool:
+            if pdf_id not in ACTIVE_INGESTION_TASKS:
+                return True
+            job = await db.jobs.find_one({"job_id": pdf_id})
+            return job is None
+
+        if await is_cancelled():
+            logger.info(f"[{pdf_id}] Ingestion cancelled before starting extraction.")
+            return
+
+        logger.info(f"[{pdf_id}] Extraction started")
+        await db.jobs.update_one(
+            {"job_id": pdf_id},
+            {"$set": {"status": "extracting"}},
+        )
+
         text = extract(pdf_path=pdf_path, pdf_id=pdf_id, detected_type=detected_type)
+        
+        if await is_cancelled():
+            logger.info(f"[{pdf_id}] Ingestion cancelled after text extraction.")
+            return
+
         now = datetime.now(timezone.utc)
         await db.jobs.update_one(
             {"job_id": pdf_id},
@@ -42,74 +64,96 @@ async def run_extraction(pdf_id: str, pdf_path: str, detected_type: str) -> None
         )
         logger.info(f"[{pdf_id}] Extraction completed (chars={len(text)})")
 
+        if await is_cancelled():
+            logger.info(f"[{pdf_id}] Ingestion cancelled before parsing.")
+            return
+
         await db.jobs.update_one(
             {"job_id": pdf_id},
             {"$set": {"status": "parsing"}},
         )
         logger.info(f"[{pdf_id}] Parsing started")
-        try:
-            final = await asyncio.wait_for(
-                parse_sections(pdf_id=pdf_id, extracted_text=text),
-                timeout=600,
-            )
-            parsed_at = datetime.now(timezone.utc)
-            await db.jobs.update_one(
-                {"job_id": pdf_id},
-                {"$set": {"status": "parsed", "parsed_at": parsed_at}},
-            )
-            await db.documents.update_one(
-                {"pdf_id": pdf_id},
-                {"$set": {"status": "parsed"}},
-            )
-            logger.info(f"[{pdf_id}] Parsing completed")
 
-            # Build and save hierarchical tree in MongoDB
-            from app.ingestion.tree_builder import build_and_save_tree
-            await build_and_save_tree(pdf_id, final)
+        final = await asyncio.wait_for(
+            parse_sections(pdf_id=pdf_id, extracted_text=text),
+            timeout=600,
+        )
 
-            # Auto-generate embeddings and store in ChromaDB + JSON mapping
-            from app.ingestion.embedding_pipeline import run_embedding_pipeline
-            logger.info(f"[{pdf_id}] Tree created. Running embedding generation pipeline...")
-            await run_embedding_pipeline(pdf_id=pdf_id, force_regenerate=True)
-            logger.info(f"[{pdf_id}] Embedding generation pipeline completed successfully.")
-        except asyncio.TimeoutError:
-            failed_at = datetime.now(timezone.utc)
-            error_message = "Parsing timed out after 240 seconds."
-            await db.jobs.update_one(
-                {"job_id": pdf_id},
-                {"$set": {"status": "parse_failed", "error": error_message, "failed_at": failed_at}},
-            )
-            await db.documents.update_one(
-                {"pdf_id": pdf_id},
-                {"$set": {"status": "failed"}},
-            )
-            logger.error(f"[{pdf_id}] {error_message}")
-        except Exception as e:
-            failed_at = datetime.now(timezone.utc)
-            await db.jobs.update_one(
-                {"job_id": pdf_id},
-                {"$set": {"status": "parse_failed", "error": str(e), "failed_at": failed_at}},
-            )
-            await db.documents.update_one(
-                {"pdf_id": pdf_id},
-                {"$set": {"status": "failed"}},
-            )
-            logger.exception(f"[{pdf_id}] Parsing failed: {e}")
-    except Exception as e:
-        now = datetime.now(timezone.utc)
+        if await is_cancelled():
+            logger.info(f"[{pdf_id}] Ingestion cancelled after parsing.")
+            for suffix in ["_sections.json", "_summary.md"]:
+                f_path = UPLOADS_DIR / f"{pdf_id}{suffix}"
+                if f_path.exists():
+                    f_path.unlink()
+            return
+
+        parsed_at = datetime.now(timezone.utc)
         await db.jobs.update_one(
             {"job_id": pdf_id},
-            {"$set": {"status": "extraction_failed", "error": str(e), "failed_at": now}},
+            {"$set": {"status": "parsed", "parsed_at": parsed_at}},
+        )
+        await db.documents.update_one(
+            {"pdf_id": pdf_id},
+            {"$set": {"status": "parsed"}},
+        )
+        logger.info(f"[{pdf_id}] Parsing completed")
+
+        if await is_cancelled():
+            logger.info(f"[{pdf_id}] Ingestion cancelled before building tree.")
+            return
+
+        # Build and save hierarchical tree in MongoDB
+        from app.ingestion.tree_builder import build_and_save_tree
+        await build_and_save_tree(pdf_id, final)
+
+        if await is_cancelled():
+            logger.info(f"[{pdf_id}] Ingestion cancelled before embedding generation.")
+            return
+
+        # Auto-generate embeddings and store in ChromaDB + JSON mapping
+        from app.ingestion.embedding_pipeline import run_embedding_pipeline
+        logger.info(f"[{pdf_id}] Tree created. Running embedding generation pipeline...")
+        await run_embedding_pipeline(pdf_id=pdf_id, force_regenerate=True)
+        logger.info(f"[{pdf_id}] Embedding generation pipeline completed successfully.")
+
+    except asyncio.CancelledError:
+        logger.warning(f"[{pdf_id}] Ingestion task was explicitly cancelled by user.")
+        for suffix in [".pdf", ".txt", "_sections.json", "_summary.md"]:
+            f_path = UPLOADS_DIR / f"{pdf_id}{suffix}"
+            if f_path.exists():
+                try:
+                    f_path.unlink()
+                except Exception:
+                    pass
+    except asyncio.TimeoutError:
+        failed_at = datetime.now(timezone.utc)
+        error_message = "Parsing timed out after 600 seconds."
+        await db.jobs.update_one(
+            {"job_id": pdf_id},
+            {"$set": {"status": "parse_failed", "error": error_message, "failed_at": failed_at}},
         )
         await db.documents.update_one(
             {"pdf_id": pdf_id},
             {"$set": {"status": "failed"}},
         )
-        logger.exception(f"[{pdf_id}] Extraction failed: {e}")
+        logger.error(f"[{pdf_id}] {error_message}")
+    except Exception as e:
+        now = datetime.now(timezone.utc)
+        await db.jobs.update_one(
+            {"job_id": pdf_id},
+            {"$set": {"status": "parse_failed", "error": str(e), "failed_at": now}},
+        )
+        await db.documents.update_one(
+            {"pdf_id": pdf_id},
+            {"$set": {"status": "failed"}},
+        )
+        logger.exception(f"[{pdf_id}] Ingestion failed: {e}")
+    finally:
+        ACTIVE_INGESTION_TASKS.pop(pdf_id, None)
 
 
 @router.post("/upload")
-async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_pdf(file: UploadFile = File(...)):
     original_filename = file.filename or "uploaded.pdf"
     if not original_filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed.")
@@ -176,8 +220,10 @@ async def upload_pdf(background_tasks: BackgroundTasks, file: UploadFile = File(
             "file_hash": file_hash,
         }
     )
-    background_tasks.add_task(run_extraction, pdf_id, str(saved_path), detected_type)
-    logger.info(f"[{pdf_id}] Upload saved and extraction task queued")
+    task = asyncio.create_task(run_extraction(pdf_id, str(saved_path), detected_type))
+    ACTIVE_INGESTION_TASKS[pdf_id] = task
+    ACTIVE_INGESTION_TASKS[job_id] = task
+    logger.info(f"[{pdf_id}] Upload saved and extraction task launched")
 
     return {
         "pdf_id": pdf_id,
@@ -269,29 +315,94 @@ async def delete_job(job_id: str):
     if db.jobs is None or db.documents is None:
         raise HTTPException(status_code=503, detail="Database is not connected.")
 
-    job = await db.jobs.find_one({"job_id": job_id}, {"_id": 0, "pdf_id": 1, "job_id": 1})
+    # Try finding job by job_id or pdf_id
+    job = await db.jobs.find_one({"$or": [{"job_id": job_id}, {"pdf_id": job_id}]}, {"_id": 0, "pdf_id": 1, "job_id": 1})
+    doc = None
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found.")
+        doc = await db.documents.find_one({"$or": [{"pdf_id": job_id}, {"job_id": job_id}]}, {"_id": 0, "pdf_id": 1, "job_id": 1})
 
-    pdf_id = job.get("pdf_id")
-    if pdf_id:
-        await db.documents.delete_many({"pdf_id": pdf_id})
-        await db.jobs.delete_many({"pdf_id": pdf_id})
-        
-        # Cleanup tree and nodes from MongoDB
-        if db.nodes is not None:
-            await db.nodes.delete_many({"pdf_id": pdf_id})
-        if db.database is not None:
-            await db.database.document_trees.delete_many({"pdf_id": pdf_id})
-
-        for suffix in [".pdf", ".txt", "_sections.json", "_summary.md"]:
-            file_path = UPLOADS_DIR / f"{pdf_id}{suffix}"
-            if file_path.exists():
-                file_path.unlink()
+    if not job and not doc:
+        pdf_id = job_id
+        actual_job_id = job_id
     else:
-        await db.jobs.delete_one({"job_id": job_id})
+        pdf_id = (job or doc).get("pdf_id") or job_id
+        actual_job_id = (job or doc).get("job_id") or job_id
 
-    return {"message": "Case deleted successfully.", "job_id": job_id}
+    # 0. Cancel active background task immediately if running
+    for key in [job_id, pdf_id, actual_job_id]:
+        if key and key in ACTIVE_INGESTION_TASKS:
+            t = ACTIVE_INGESTION_TASKS.pop(key, None)
+            if t and not t.done():
+                logger.info(f"Explicitly cancelling running extraction task for {key}")
+                t.cancel()
+
+    # 1. MongoDB Collections Cleanup
+    deleted_counts = {}
+    try:
+        res_docs = await db.documents.delete_many({"$or": [{"pdf_id": pdf_id}, {"job_id": actual_job_id}]})
+        deleted_counts["documents"] = res_docs.deleted_count
+
+        res_jobs = await db.jobs.delete_many({"$or": [{"pdf_id": pdf_id}, {"job_id": actual_job_id}]})
+        deleted_counts["jobs"] = res_jobs.deleted_count
+
+        # Cleanup nodes collection
+        deleted_nodes_count = 0
+        if db.nodes is not None:
+            res_nodes = await db.nodes.delete_many({"$or": [{"pdf_id": pdf_id}, {"file_id": pdf_id}]})
+            deleted_nodes_count += res_nodes.deleted_count
+        
+        if db.database is not None:
+            if hasattr(db.database, "nodes"):
+                res_db_nodes = await db.database.nodes.delete_many({"$or": [{"pdf_id": pdf_id}, {"file_id": pdf_id}]})
+                deleted_nodes_count += res_db_nodes.deleted_count
+            # Cleanup document trees collection
+            res_trees = await db.database.document_trees.delete_many({"$or": [{"pdf_id": pdf_id}, {"file_id": pdf_id}]})
+            deleted_counts["document_trees"] = res_trees.deleted_count
+            # Cleanup embedding mappings collection
+            res_mappings = await db.database.embedding_mappings.delete_many({"$or": [{"file_id": pdf_id}, {"pdf_id": pdf_id}, {"doc_id": pdf_id}]})
+            deleted_counts["embedding_mappings"] = res_mappings.deleted_count
+            
+        deleted_counts["nodes"] = deleted_nodes_count
+        logger.info(f"MongoDB records purged for {pdf_id}: {deleted_counts}")
+    except Exception as e:
+        logger.error(f"Error purging MongoDB collections for {pdf_id}: {e}")
+
+    # 2. ChromaDB Vectors Cleanup
+    try:
+        chroma_store.delete_by_file_id(pdf_id)
+        logger.info(f"ChromaDB vectors purged for file_id: {pdf_id}")
+    except Exception as e:
+        logger.warning(f"Notice during ChromaDB vector purge for {pdf_id}: {e}")
+
+    # 3. Connection JSON Files Cleanup (backend/app/connection)
+    try:
+        if CONNECTION_DIR.exists():
+            for conn_file in list(CONNECTION_DIR.glob(f"{pdf_id}*")):
+                try:
+                    conn_file.unlink()
+                    logger.info(f"Deleted connection file: {conn_file.name}")
+                except Exception as ex:
+                    logger.error(f"Error removing connection file {conn_file}: {ex}")
+    except Exception as e:
+        logger.error(f"Error cleaning connection files for {pdf_id}: {e}")
+
+    # 4. Uploads Files Cleanup (backend/uploads)
+    try:
+        if UPLOADS_DIR.exists():
+            for upload_file in list(UPLOADS_DIR.glob(f"{pdf_id}*")):
+                try:
+                    upload_file.unlink()
+                    logger.info(f"Deleted upload file: {upload_file.name}")
+                except Exception as ex:
+                    logger.error(f"Error removing upload file {upload_file}: {ex}")
+    except Exception as e:
+        logger.error(f"Error cleaning upload files for {pdf_id}: {e}")
+
+    return {
+        "message": "Judgment, node tree, Chroma vectors, connection mappings, and all associated files deleted successfully.",
+        "job_id": actual_job_id,
+        "pdf_id": pdf_id,
+    }
 
 
 @router.get("/status")
