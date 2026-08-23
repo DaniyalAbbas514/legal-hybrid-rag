@@ -61,3 +61,127 @@ h1, h2, h3, .brand-font {
   }
 }
 
+
+/* ==========================================================================
+   Motion primitives — transform/opacity only, GPU-friendly.
+   Brand palette unchanged; accent used for focus is the existing gold #E9C176.
+   ========================================================================== */
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  /* `clip` instead of `hidden` so the sticky header keeps working */
+  overflow-x: clip;
+}
+
+/* Scroll-triggered reveal (driven by the shared <Reveal> component) */
+.reveal {
+  opacity: 0;
+  transition:
+    opacity 700ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal[data-reveal='up']    { transform: translate3d(0, 24px, 0); }
+.reveal[data-reveal='left']  { transform: translate3d(-28px, 0, 0); }
+.reveal[data-reveal='right'] { transform: translate3d(28px, 0, 0); }
+.reveal[data-reveal='scale'] { transform: scale(0.965); }
+.reveal[data-reveal='fade']  { transform: none; }
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Shorter travel on small screens — lighter work, less layout noise */
+@media (max-width: 767px) {
+  .reveal[data-reveal='up']    { transform: translate3d(0, 14px, 0); }
+  .reveal[data-reveal='left'],
+  .reveal[data-reveal='right'] { transform: translate3d(0, 14px, 0); }
+}
+
+/* On-load entrance for above-the-fold content */
+@keyframes riseIn {
+  from { opacity: 0; transform: translate3d(0, 26px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+.rise-in {
+  animation: riseIn 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes imageReveal {
+  from { opacity: 0; transform: scale(1.04); }
+  to   { opacity: 1; transform: none; }
+}
+
+.image-reveal {
+  animation: imageReveal 1100ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Card lift — used by feature/pricing/stat cards */
+.lift {
+  transition:
+    transform 300ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 300ms ease;
+  will-change: transform;
+}
+
+@media (hover: hover) {
+  .lift:hover {
+    transform: translateY(-4px);
+  }
+}
+
+/* Visible focus for keyboard users, in brand gold */
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid #E9C176;
+  outline-offset: 3px;
+}
+
+/* Skip link — only visible while focused */
+.skip-link {
+  position: fixed;
+  top: 0;
+  left: 1rem;
+  z-index: 100;
+  transform: translateY(-150%);
+  background: #0D1C32;
+  color: #ffffff;
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: transform 200ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0.75rem);
+}
+
+/* Respect the user's motion preference */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .lift:hover {
+    transform: none;
+  }
+}

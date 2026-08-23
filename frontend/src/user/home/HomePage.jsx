@@ -9,7 +9,7 @@ const HomePage = () => {
   return (
     <div className="flex flex-col items-start bg-[#F8F9FB] min-h-screen w-full">
       <UserHeader activePage="home" />
-      <main className="w-full">
+      <main id="main-content" className="w-full">
         <HeroSection />
         <FeaturesBentoGrid />
         <PricingSection />
